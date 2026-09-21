@@ -16,33 +16,32 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. todo 表加 parent_id（自引用）和 sort_order
+    # 1. todo 表加 parent_id（自引用）和 sort_order。
+    #    SQLite 不支持 ALTER TABLE ADD CONSTRAINT，且最新 schema 不建外键约束
+    #    （关联由应用层维护），故只加列与索引。
     op.add_column("todo", sa.Column("parent_id", sa.Integer(), nullable=True))
-    op.create_foreign_key(
-        "fk_todo_parent_id_todo",
-        "todo", "todo",
-        ["parent_id"], ["id"],
-        ondelete="CASCADE",
-    )
     op.add_column("todo", sa.Column("sort_order", sa.Integer(), nullable=False, server_default="0"))
+    op.create_index("idx_todo_parent", "todo", ["parent_id"])
 
-    # 2. 新建 todo_note 子记录表
+    # 2. 新建 todo_note 子记录表（无外键约束，仅建索引）
     op.create_table(
         "todo_note",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("todo_id", sa.Integer(), sa.ForeignKey("todo.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("todo_id", sa.Integer(), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("sort_order", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
     )
+    op.create_index("idx_note_todo", "todo_note", ["todo_id"])
 
-    # 3. 删除 planned_date 列（MySQL 需要单独执行）
+    # 3. 删除 planned_date 列（SQLite 3.35+ 支持 DROP COLUMN）
     op.drop_column("todo", "planned_date")
 
 
 def downgrade() -> None:
     op.add_column("todo", sa.Column("planned_date", sa.Date(), nullable=True))
+    op.drop_index("idx_note_todo", table_name="todo_note")
     op.drop_table("todo_note")
-    op.drop_constraint("fk_todo_parent_id_todo", "todo", type_="foreignkey")
+    op.drop_index("idx_todo_parent", table_name="todo")
     op.drop_column("todo", "parent_id")
     op.drop_column("todo", "sort_order")

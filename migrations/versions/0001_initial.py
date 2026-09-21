@@ -31,12 +31,7 @@ def upgrade() -> None:
     op.create_table(
         "okr",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "plan_id",
-            sa.Integer(),
-            sa.ForeignKey("five_year_plan.id", ondelete="CASCADE"),
-            nullable=True,
-        ),
+        sa.Column("plan_id", sa.Integer(), nullable=True),
         sa.Column("quarter", sa.String(10), nullable=False),
         sa.Column("objective", sa.String(200), nullable=False),
         sa.Column("kr_note", sa.Text()),
@@ -47,12 +42,7 @@ def upgrade() -> None:
     op.create_table(
         "project",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "okr_id",
-            sa.Integer(),
-            sa.ForeignKey("okr.id", ondelete="CASCADE"),
-            nullable=True,
-        ),
+        sa.Column("okr_id", sa.Integer(), nullable=True),
         sa.Column("name", sa.String(100), nullable=False),
         sa.Column("description", sa.Text()),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -62,12 +52,7 @@ def upgrade() -> None:
     op.create_table(
         "todo",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "project_id",
-            sa.Integer(),
-            sa.ForeignKey("project.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
+        sa.Column("project_id", sa.Integer(), nullable=False),
         sa.Column("title", sa.String(200), nullable=False),
         sa.Column("description", sa.Text()),
         sa.Column("planned_date", sa.Date(), nullable=False),
