@@ -107,8 +107,8 @@ ensure_backend_env() {
       err "未找到 uv，且 .venv 不存在，无法自动初始化后端环境。请先安装 uv。"
       exit 1
     fi
-    log "检测到虚拟环境缺失，执行 uv sync --extra dev ..."
-    (cd "$ROOT" && "$uv_bin" sync --extra dev)
+    log "检测到虚拟环境缺失，执行 uv sync --extra dev --extra mysql ..."
+    (cd "$ROOT" && "$uv_bin" sync --extra dev --extra mysql)
   fi
 
   # 2) 数据库迁移（SQLite 文件不存在时执行 alembic upgrade head）

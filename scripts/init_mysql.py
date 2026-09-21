@@ -5,7 +5,7 @@
   1. 从一个 .env 文件读取 MySQL 连接信息（DB_HOST/DB_PORT/DB_USER/DB_PASSWORD）；
   2. 连接 MySQL 服务器，创建目标数据库（默认 see_life）；
   3. 执行 scripts/sql/schema_mysql.sql，在目标库中创建全部表、索引与外键；
-  4. 校验建表结果并打印连接串（密码打码）。
+  4. 校验建表结果并打印 DB_* 连接配置（密码打码）。
 
 脚本幂等：数据库与表都使用 IF NOT EXISTS，可重复执行，不会清空已有数据。
 
@@ -71,16 +71,6 @@ def drain_results(cursor) -> None:
     """消费 MULTI_STATEMENTS 产生的全部结果集，避免 Commands out of sync。"""
     while cursor.nextset():
         pass
-
-
-def masked_dsn(env: dict[str, str], db: str) -> str:
-    """生成打码的连接串用于展示。"""
-    pwd = env.get("DB_PASSWORD", "")
-    masked = "***" if pwd else ""
-    return (
-        f"mysql+pymysql://{env['DB_USER']}:{masked}@"
-        f"{env['DB_HOST']}:{env.get('DB_PORT', '3306')}/{db}?charset=utf8mb4"
-    )
 
 
 def main() -> int:
@@ -165,9 +155,13 @@ def main() -> int:
         return 1
 
     log("数据库初始化成功 ✅")
-    log("应用连接串（DATABASE_URL，密码已打码）：")
-    print("    " + masked_dsn(env, db_name))
-    log("将其写入项目根目录 .env 的 DATABASE_URL 即可让应用使用该 MySQL 库。")
+    log("应用连接配置（密码已打码）：")
+    print(f"    DB_HOST={env['DB_HOST']}")
+    print(f"    DB_PORT={env.get('DB_PORT', '3306')}")
+    print(f"    DB_USER={env['DB_USER']}")
+    print("    DB_PASSWORD=<你的密码>")
+    print(f"    DB_NAME={db_name}")
+    log("将其写入项目根目录 .env 即可让应用使用该 MySQL 库。")
     return 0
 
 
