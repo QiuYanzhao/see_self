@@ -92,7 +92,7 @@ onUnmounted(() => {
 
 <template>
   <div class="page-container tasks-new">
-    <div class="page-head">
+    <div class="page-head anim-item stagger-1">
       <h2 class="page-title">计划</h2>
       <div class="head-actions">
         <OkrFilterSelect v-model="filterOkrId" :okrs="okrs" />
@@ -100,10 +100,10 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="loading" class="empty">加载中...</div>
-    <div v-else-if="!projects.length" class="empty">还没有项目，点击右上角创建</div>
-    <div v-else-if="!filteredProjects.length" class="empty">该 OKR 下暂无项目</div>
-    <div v-else class="project-grid">
+    <div v-if="loading" class="empty anim-item stagger-1">加载中...</div>
+    <div v-else-if="!projects.length" class="empty anim-item stagger-1">还没有项目，点击右上角创建</div>
+    <div v-else-if="!filteredProjects.length" class="empty anim-item stagger-1">该 OKR 下暂无项目</div>
+    <div v-else class="project-grid anim-item stagger-2">
       <div
         v-for="p in filteredProjects"
         :key="p.id"
