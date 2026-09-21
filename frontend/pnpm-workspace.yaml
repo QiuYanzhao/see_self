@@ -1,0 +1,13 @@
+# pnpm 构建脚本白名单与运行前校验配置
+# pnpm >= 11.20 使用 allowBuilds（包名 -> 布尔）
+allowBuilds:
+  esbuild: true
+  vue-demi: true
+# pnpm 10.4 ~ 11.x 使用 onlyBuiltDependencies（列表），保留以兼容旧版本
+onlyBuiltDependencies:
+  - esbuild
+  - vue-demi
+# 运行脚本前不强制做依赖状态检查（避免 ignored builds 阻断 build/dev）
+verifyDepsBeforeRun: false
+# 存在未执行的构建脚本时不因此让 install 以非零码退出（平台二进制由 optionalDependencies 提供）
+strictDepBuilds: false
