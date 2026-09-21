@@ -467,7 +467,7 @@ onMounted(load)
       创建完成后，点击右上角 <strong>「导入五年计划」</strong> 按钮选择导出的 JSON 文件即可。
     </p>
     <p>
-      也可通过命令行导入：<code>uv run python scripts/import_five_year_plan.py &lt;纲要.json&gt; --overwrite</code>
+      推荐使用 <strong>Agent</strong> 通过 <strong>MCP 接口</strong>（<code>seeself_import_plan</code>）直接导入五年计划。
     </p>
   </div>
 
