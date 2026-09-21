@@ -5,15 +5,15 @@ import { api } from '../api'
 import type { Okr, Project } from '../api/types'
 import OkrFilterSelect from '../components/OkrFilterSelect.vue'
 
-// 计划页：项目列表，点击进入项目详情（计划编辑页）
+// 计划页：项目列表，点击卡片进入项目详情
+// 项目「编辑」入口在项目详情页（删除项目左侧），本页仅保留新建
 const router = useRouter()
 const projects = ref<Project[]>([])
 const okrs = ref<Okr[]>([])
 const filterOkrId = ref<number | null>(null)
 const loading = ref(true)
+// 新建项目弹窗
 const showModal = ref(false)
-// 编辑态：editing=null 为新建，否则为编辑该项目
-const editing = ref<Project | null>(null)
 const formName = ref('')
 const formDesc = ref('')
 const formOkrId = ref<number | null>(null)
@@ -31,22 +31,15 @@ async function loadOkrs() {
   okrs.value = await api.listOkrs()
 }
 
+// 打开新建项目弹窗
 function openCreate() {
-  editing.value = null
   formName.value = ''
   formDesc.value = ''
   formOkrId.value = null
   showModal.value = true
 }
 
-function openEdit(p: Project) {
-  editing.value = p
-  formName.value = p.name
-  formDesc.value = p.description || ''
-  formOkrId.value = p.okr_id
-  showModal.value = true
-}
-
+// 提交新建项目；编辑入口已移至项目详情页
 async function saveProject() {
   if (!formName.value.trim()) return
   const body = {
@@ -55,16 +48,13 @@ async function saveProject() {
     okr_id: formOkrId.value,
   }
   try {
-    if (editing.value) {
-      await api.updateProject(editing.value.id, body)
-      showModal.value = false
-      await load()
-    } else {
-      const p = await api.createProject(body)
-      showModal.value = false
-      router.push(`/projects/${p.id}`)
-    }
+    console.log('[TasksView] create project', body)
+    const p = await api.createProject(body)
+    showModal.value = false
+    console.log('[TasksView] project created id=', p.id)
+    router.push(`/projects/${p.id}`)
   } catch (e: any) {
+    console.error('[TasksView] create project failed', e)
     alert(e.message)
   }
 }
@@ -122,14 +112,6 @@ onUnmounted(() => {
       >
         <div class="card-top">
           <h3>{{ p.name }}</h3>
-          <button
-            class="edit-btn"
-            title="编辑项目"
-            @click.stop="openEdit(p)"
-          >
-            <svg viewBox="0 0 16 16" width="12" height="12"><path d="M11.4 2.6 13.4 4.6 5.5 12.5 2.6 13.4 3.5 10.5 11.4 2.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-            编辑
-          </button>
         </div>
         <div v-if="p.okr_id" class="okr-chip">{{ projectOkrLabel(p) }}</div>
         <div class="progress-bar">
@@ -141,10 +123,10 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- 新建/编辑项目弹窗 -->
+    <!-- 新建项目弹窗（编辑已在项目详情页） -->
     <div v-if="showModal" class="modal-mask" @click.self="showModal = false">
       <div class="modal">
-        <h3>{{ editing ? '编辑项目' : '新建项目' }}</h3>
+        <h3>新建项目</h3>
         <input v-model="formName" placeholder="项目名称" @keyup.enter="saveProject" />
         <textarea v-model="formDesc" placeholder="描述（可选）" rows="7" />
         <label class="field-label">挂靠 OKR（可选）</label>
@@ -154,9 +136,7 @@ onUnmounted(() => {
         </select>
         <div class="modal-actions">
           <button class="btn" @click="showModal = false">取消</button>
-          <button class="btn primary" @click="saveProject" :disabled="!formName.trim()">
-            {{ editing ? '保存' : '创建' }}
-          </button>
+          <button class="btn primary" @click="saveProject" :disabled="!formName.trim()">创建</button>
         </div>
       </div>
     </div>
@@ -257,25 +237,6 @@ onUnmounted(() => {
   margin: 0;
   line-height: 1.4;
   color: #1e293b;
-}
-.edit-btn {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  font-size: 12px;
-  color: #5b6b80;
-  background: #f7faff;
-  border: 1px solid rgba(43, 108, 216, 0.1);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.edit-btn:hover {
-  color: #1e57b5;
-  border-color: rgba(43, 108, 216, 0.28);
-  background: rgba(43, 108, 216, 0.08);
 }
 .okr-chip {
   display: inline-block;

@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
-import type { Project, TodoNode } from '../api/types'
+import type { Okr, Project, TodoNode } from '../api/types'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -10,6 +10,8 @@ const projectId = Number(props.id)
 
 const tree = ref<TodoNode[]>([])
 const project = ref<Project | null>(null)
+// OKR 列表：项目编辑弹窗选择「挂靠 OKR」时使用
+const okrs = ref<Okr[]>([])
 const loading = ref(true)
 const expanded = ref<Set<number>>(new Set())
 
@@ -19,6 +21,15 @@ const showTodoModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteModal = ref(false)
 const showDeleteProject = ref(false)
+// 项目编辑弹窗（入口：顶栏「编辑」，位于「删除项目」左侧）
+const showEditProject = ref(false)
+
+// 项目编辑表单（名称 / 描述 / 挂靠 OKR）
+const projectForm = ref({
+  name: '',
+  description: '',
+  okr_id: null as number | null,
+})
 
 // 新增模块表单
 const modForm = ref({ name: '', desc: '' })
@@ -84,9 +95,15 @@ const topModules = computed(() => tree.value)
 async function load() {
   loading.value = true
   try {
-    const [t, ps] = await Promise.all([api.getTodoTree(projectId), api.listProjects()])
+    // 并行拉取：事项树、项目列表、OKR 列表（OKR 供项目编辑弹窗）
+    const [t, ps, okrList] = await Promise.all([
+      api.getTodoTree(projectId),
+      api.listProjects(),
+      api.listOkrs(),
+    ])
     tree.value = t
     project.value = ps.find(p => p.id === projectId) ?? null
+    okrs.value = okrList
     function expand(nodes: TodoNode[]) {
       for (const n of nodes) {
         if (n.children.length && !moduleDone(n)) {
@@ -101,6 +118,45 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+// 打开项目编辑弹窗：用当前项目数据填充表单
+function openProjectEdit() {
+  if (!project.value) {
+    console.warn('[ProjectView] openProjectEdit skipped: project not loaded')
+    return
+  }
+  projectForm.value = {
+    name: project.value.name,
+    description: project.value.description || '',
+    okr_id: project.value.okr_id ?? null,
+  }
+  console.log('[ProjectView] open project edit modal, id=', projectId)
+  showEditProject.value = true
+}
+
+// 提交项目编辑：更新后刷新本地 project 引用，无需整页重载
+async function submitProjectEdit() {
+  if (!projectForm.value.name.trim() || !project.value) return
+  const body = {
+    name: projectForm.value.name.trim(),
+    description: projectForm.value.description || null,
+    okr_id: projectForm.value.okr_id,
+  }
+  try {
+    console.log('[ProjectView] update project', projectId, body)
+    const updated = await api.updateProject(projectId, body)
+    showEditProject.value = false
+    project.value = updated
+    console.log('[ProjectView] project updated')
+  } catch (e: any) {
+    console.error('[ProjectView] update project failed', e)
+    alert(e.message)
+  }
+}
+
+function okrLabel(okr: Okr) {
+  return `${okr.quarter} · ${okr.objective}`
 }
 
 async function toggle(node: TodoNode) {
@@ -267,6 +323,7 @@ async function confirmDelete() {
 
 // 删除整个项目
 async function confirmDeleteProject() {
+  console.log('[ProjectView] delete project', projectId)
   await api.deleteProject(projectId)
   showDeleteProject.value = false
   router.push('/tasks')
@@ -313,6 +370,11 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize))
         返回计划
       </button>
       <div class="head-actions">
+        <!-- 项目编辑：从计划卡片迁移到此，位于删除项目左侧 -->
+        <button class="btn" title="编辑项目" @click="openProjectEdit">
+          <svg viewBox="0 0 16 16" width="13" height="13"><path d="M11.4 2.6 13.4 4.6 5.5 12.5 2.6 13.4 3.5 10.5 11.4 2.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          编辑
+        </button>
         <button class="btn danger" @click="showDeleteProject = true">删除项目</button>
         <button class="btn primary" @click="router.push(`/projects/${projectId}/progress`)">
           查看进度
@@ -543,6 +605,32 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize))
         <div class="modal-actions">
           <button class="btn" @click="showDeleteModal = false">取消</button>
           <button class="btn danger" @click="confirmDelete">确认删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 项目编辑弹窗（从计划卡片迁入，入口在删除项目左侧） -->
+    <div v-if="showEditProject" class="modal-mask" @click.self="showEditProject = false">
+      <div class="modal">
+        <h3>编辑项目</h3>
+        <div class="form-group">
+          <label>项目名称</label>
+          <input v-model="projectForm.name" placeholder="项目名称" @keyup.enter="submitProjectEdit" />
+        </div>
+        <div class="form-group">
+          <label>描述（可选）</label>
+          <textarea v-model="projectForm.description" placeholder="描述（可选）" rows="7" />
+        </div>
+        <div class="form-group">
+          <label>挂靠 OKR（可选）</label>
+          <select v-model="projectForm.okr_id">
+            <option :value="null">不挂靠</option>
+            <option v-for="o in okrs" :key="o.id" :value="o.id">{{ okrLabel(o) }}</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" @click="showEditProject = false">取消</button>
+          <button class="btn primary" @click="submitProjectEdit" :disabled="!projectForm.name.trim()">保存</button>
         </div>
       </div>
     </div>

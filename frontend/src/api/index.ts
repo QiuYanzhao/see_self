@@ -25,11 +25,11 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return resp.json() as Promise<T>
 }
 
-const jsonPost = (url: string, body: unknown) =>
-  request(url, { method: 'POST', body: JSON.stringify(body) })
-const jsonPut = (url: string, body: unknown) =>
-  request(url, { method: 'PUT', body: JSON.stringify(body) })
-const jsonDelete = (url: string) => request(url, { method: 'DELETE' })
+const jsonPost = <T>(url: string, body: unknown) =>
+  request<T>(url, { method: 'POST', body: JSON.stringify(body) })
+const jsonPut = <T>(url: string, body: unknown) =>
+  request<T>(url, { method: 'PUT', body: JSON.stringify(body) })
+const jsonDelete = <T = void>(url: string) => request<T>(url, { method: 'DELETE' })
 
 export const api = {
   dashboard: () => request<DashboardData>('/api/dashboard'),
@@ -49,7 +49,7 @@ export const api = {
   listProjects: (okrId?: number) =>
     request<Project[]>(`/api/projects${okrId != null ? `?okr_id=${okrId}` : ''}`),
   createProject: (body: Partial<Project>) => request<Project>('/api/projects', { method: 'POST', body: JSON.stringify(body) }),
-  updateProject: (id: number, body: Partial<Project>) => jsonPut(`/api/projects/${id}`, body),
+  updateProject: (id: number, body: Partial<Project>) => jsonPut<Project>(`/api/projects/${id}`, body),
   deleteProject: (id: number) => jsonDelete(`/api/projects/${id}`),
 
   getTodoTree: (projectId: number) => request<TodoNode[]>(`/api/todos/tree/${projectId}`),
