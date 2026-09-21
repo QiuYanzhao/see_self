@@ -8,12 +8,15 @@ import TimeProgressBar from '../components/TimeProgressBar.vue'
 import OkrFilterSelect from '../components/OkrFilterSelect.vue'
 import HeatmapCard from '../components/HeatmapCard.vue'
 import StatsNumber from '../components/StatsNumber.vue'
+import ProjectStatusFilter, { type ProjectStatus } from '../components/ProjectStatusFilter.vue'
 
 const router = useRouter()
 const data = ref<DashboardData | null>(null)
 const okrs = ref<Okr[]>([])
 const heatmap = ref<HeatmapItem[]>([])
 const filterOkrId = ref<number | null>(null)
+// 项目状态筛选：默认「进行中」（0 < progress < 100）
+const filterStatus = ref<ProjectStatus>('active')
 const loading = ref(true)
 let timer = 0
 
@@ -59,12 +62,31 @@ function projectOkrLabel(p: Project) {
   return okr ? okrLabel(okr) : ''
 }
 
-// OKR 筛选：null 为全部
+// 按项目进度判定状态：进行中 / 待开始 / 已完成
+// 用 <=0 / >=100 降低浮点误差；无事项项目 progress=0 归入待开始
+function matchProjectStatus(p: Project, status: ProjectStatus): boolean {
+  const prog = p.progress
+  if (status === 'pending') return prog <= 0
+  if (status === 'done') return prog >= 100
+  return prog > 0 && prog < 100
+}
+
+// 组合筛选：状态 ∧ OKR
 const filteredProjects = computed(() => {
   const projects = data.value?.projects || []
-  if (!filterOkrId.value) return projects
-  return projects.filter((p) => p.okr_id === filterOkrId.value)
+  return projects.filter((p) => {
+    if (!matchProjectStatus(p, filterStatus.value)) return false
+    if (filterOkrId.value) return p.okr_id === filterOkrId.value
+    return true
+  })
 })
+
+// 状态文案（空态提示用）
+const statusLabel: Record<ProjectStatus, string> = {
+  active: '进行中',
+  pending: '待开始',
+  done: '已完成',
+}
 
 async function load() {
   loading.value = true
@@ -144,10 +166,14 @@ onBeforeUnmount(() => clearInterval(timer))
         </div>
 
         <div class="filter-bar">
+          <ProjectStatusFilter v-model="filterStatus" />
           <OkrFilterSelect v-model="filterOkrId" :okrs="okrs" />
         </div>
         <p v-if="!data.projects.length" class="empty">还没有项目，去「计划」页创建一个吧</p>
-        <p v-else-if="!filteredProjects.length" class="empty">该 OKR 下暂无项目</p>
+        <p v-else-if="!filteredProjects.length" class="empty">
+          {{ statusLabel[filterStatus] }}下暂无项目
+          <template v-if="filterOkrId">（当前 OKR 筛选下）</template>
+        </p>
         <div v-else class="project-overview">
           <div
             v-for="p in filteredProjects"
@@ -273,6 +299,10 @@ onBeforeUnmount(() => clearInterval(timer))
 }
 .filter-bar {
   margin-bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 .okr-chip {
   display: inline-block;
