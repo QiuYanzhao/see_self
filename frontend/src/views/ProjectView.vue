@@ -106,6 +106,17 @@ async function load() {
 async function toggle(node: TodoNode) {
   const updated = (await api.toggleTodo(node.id, !node.completed_at)) as TodoNode
   node.completed_at = updated.completed_at
+  // 找到该事项所属的顶层模块（产品结构：模块 -> 事项 两层）
+  const parentModule = tree.value.find((m) => m.children.some((c) => c.id === node.id))
+  if (!parentModule) return
+  // 与 load() 展开规则保持一致：模块事项全部完成则自动折叠，否则展开
+  if (moduleDone(parentModule)) {
+    expanded.value.delete(parentModule.id)
+  } else {
+    expanded.value.add(parentModule.id)
+  }
+  // 完成态变化后「Done」盖章需要重新定位
+  nextTick(() => sizeStamps())
 }
 
 function toggleExpand(id: number) {
@@ -467,7 +478,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize))
         </div>
         <div class="form-group">
           <label>模块简介（可选）</label>
-          <textarea v-model="modForm.desc" placeholder="这个模块要达成什么目标..." rows="3" />
+          <textarea v-model="modForm.desc" placeholder="这个模块要达成什么目标..." rows="7" />
         </div>
         <div class="modal-actions">
           <button class="btn" @click="showModuleModal = false">取消</button>
@@ -493,7 +504,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize))
         </div>
         <div class="form-group">
           <label>备注（可选）</label>
-          <textarea v-model="todoForm.description" placeholder="补充说明..." rows="2" />
+          <textarea v-model="todoForm.description" placeholder="补充说明..." rows="6" />
         </div>
         <div class="modal-actions">
           <button class="btn" @click="showTodoModal = false">取消</button>
@@ -512,7 +523,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize))
         </div>
         <div class="form-group">
           <label>备注（可选）</label>
-          <textarea v-model="editForm.description" placeholder="补充说明..." rows="2" />
+          <textarea v-model="editForm.description" placeholder="补充说明..." rows="6" />
         </div>
         <div class="modal-actions">
           <button class="btn" @click="showEditModal = false">取消</button>
@@ -1082,7 +1093,11 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize))
   border: 1px solid var(--border-strong);
   border-radius: 16px;
   padding: 26px 28px;
-  width: 440px;
+  width: 70vw;
+  max-width: 70vw;
+  min-height: 50vh;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
   animation: modalIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -1090,7 +1105,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize))
   from { opacity: 0; transform: translateY(8px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-.modal-sm { width: 380px; }
+.modal-sm { width: 380px; min-height: 0; }
 .modal h3 {
   font-family: var(--serif);
   margin-bottom: 20px;
@@ -1124,6 +1139,11 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize))
 .form-group textarea:focus {
   border-color: rgba(43,108,216,.5);
   box-shadow: 0 0 0 3px rgba(43,108,216,.1);
+}
+/* 备注框：只允许纵向拉伸，且有高度上限，避免拖出弹窗边界 */
+.form-group textarea {
+  resize: vertical;
+  max-height: 50vh;
 }
 .modal-actions {
   display: flex;

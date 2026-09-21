@@ -146,7 +146,7 @@ onUnmounted(() => {
       <div class="modal">
         <h3>{{ editing ? '编辑项目' : '新建项目' }}</h3>
         <input v-model="formName" placeholder="项目名称" @keyup.enter="saveProject" />
-        <textarea v-model="formDesc" placeholder="描述（可选）" rows="3" />
+        <textarea v-model="formDesc" placeholder="描述（可选）" rows="7" />
         <label class="field-label">挂靠 OKR（可选）</label>
         <select v-model="formOkrId">
           <option :value="null">不挂靠</option>
@@ -333,8 +333,11 @@ onUnmounted(() => {
   border: 1px solid rgba(43, 108, 216, 0.1);
   border-radius: 18px;
   padding: 26px 28px;
-  width: 440px;
-  max-width: calc(100vw - 40px);
+  width: 70vw;
+  max-width: 70vw;
+  min-height: 50vh;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: 0 24px 60px rgba(22, 51, 47, 0.25);
   animation: modalIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -363,6 +366,11 @@ onUnmounted(() => {
 .modal input:focus, .modal textarea:focus, .modal select:focus {
   border-color: #2b6cd8;
   box-shadow: 0 0 0 3px rgba(43, 108, 216, 0.12);
+}
+/* 描述框：只允许纵向拉伸，且有高度上限，避免拖出弹窗边界 */
+.modal textarea {
+  resize: vertical;
+  max-height: 50vh;
 }
 .field-label {
   display: block;
