@@ -203,6 +203,93 @@ const curveArea = computed(() => {
 
 const gridY = [0, 25, 50, 75, 100]
 
+// ── 曲线 hover：靠近曲线时在最近点旁展示进度百分比 ──
+const svgRef = ref<SVGSVGElement | null>(null)
+const hoverIdx = ref<number | null>(null)
+
+// 屏幕坐标 → SVG viewBox 坐标（preserveAspectRatio=none 会拉伸，需按边界框换算）
+function toSvgXY(e: MouseEvent): { x: number; y: number } | null {
+  const svg = svgRef.value
+  if (!svg) return null
+  const rect = svg.getBoundingClientRect()
+  if (!rect.width || !rect.height) return null
+  return {
+    x: ((e.clientX - rect.left) / rect.width) * SVG_W,
+    y: ((e.clientY - rect.top) / rect.height) * SVG_H,
+  }
+}
+
+// 在曲线数据点中找距离鼠标最近的一个（阈值内才高亮）
+const HOVER_HIT_R2 = 42 * 42
+function onCurveMove(e: MouseEvent) {
+  const pt = toSvgXY(e)
+  if (!pt || !curvePoints.value.length) {
+    hoverIdx.value = null
+    return
+  }
+  let best = -1
+  let bestD2 = Infinity
+  for (let i = 0; i < curvePoints.value.length; i++) {
+    const p = curvePoints.value[i]
+    const dx = sx(p.date) - pt.x
+    const dy = sy(p.pct) - pt.y
+    const d2 = dx * dx + dy * dy
+    if (d2 < bestD2) {
+      bestD2 = d2
+      best = i
+    }
+  }
+  const next = best >= 0 && bestD2 <= HOVER_HIT_R2 ? best : null
+  if (next !== hoverIdx.value) {
+    hoverIdx.value = next
+    if (next !== null) {
+      const p = curvePoints.value[next]
+      console.debug(`[curve] hover 点 ${p.label} → ${p.pct.toFixed(1)}%`)
+    } else {
+      console.debug('[curve] hover 离开命中区')
+    }
+  }
+}
+
+function onCurveLeave() {
+  if (hoverIdx.value !== null) {
+    hoverIdx.value = null
+    console.debug('[curve] hover leave，清除百分比标签')
+  }
+}
+
+// 悬浮数字标签：只显示进度数值（无日期、无 % 号），轻量胶囊浮在点旁
+const hoverTip = computed(() => {
+  const i = hoverIdx.value
+  if (i === null) return null
+  const p = curvePoints.value[i]
+  if (!p) return null
+  const cx = sx(p.date)
+  const cy = sy(p.pct)
+  // 纯数字文案：整数不带小数点，避免 "55.0" 显得啰嗦
+  const raw = Number(p.pct.toFixed(1))
+  const label = Number.isInteger(raw) ? String(raw) : raw.toFixed(1)
+  // 胶囊尺寸随数字宽度微调（两位数够用）
+  const tipW = 36 + label.length * 7
+  const tipH = 26
+  // 默认贴在点右上方；靠边则翻到左侧/下方，始终避开出界
+  let tipX = cx + 12
+  let tipY = cy - tipH - 10
+  if (tipX + tipW > SVG_W - PAD.r) tipX = cx - tipW - 12
+  if (tipY < PAD.t) tipY = cy + 12
+  return {
+    x: cx,
+    y: cy,
+    tipX,
+    tipY,
+    tipW,
+    tipH,
+    textX: tipX + tipW / 2,
+    textY: tipY + tipH / 2 + 1,
+    label,
+  }
+})
+
 // 曲线加载动画：从左到右生长(stroke-dashoffset)
 const lineRef = ref<SVGPathElement | null>(null)
 const areaShown = ref(false)
@@ -285,7 +372,16 @@ onMounted(() => setTimeout(playCurveAnim, 250))
         <div class="card curve-card">
           <div class="card-title">项目进度</div>
           <div v-if="curvePoints.length < 2" class="empty">暂无完成记录，完成事项后曲线将自动生成</div>
-          <svg v-else class="curve-svg" :viewBox="`0 0 ${SVG_W} ${SVG_H}`" preserveAspectRatio="none">
+          <!-- hover 最近点时在点旁展示进度百分比；移出曲线区自动隐藏 -->
+          <svg
+            v-else
+            ref="svgRef"
+            class="curve-svg"
+            :viewBox="`0 0 ${SVG_W} ${SVG_H}`"
+            preserveAspectRatio="none"
+            @mousemove="onCurveMove"
+            @mouseleave="onCurveLeave"
+          >
             <defs>
               <linearGradient id="curveGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stop-color="#2b6cd8" stop-opacity=".22" />
@@ -303,10 +399,35 @@ onMounted(() => setTimeout(playCurveAnim, 250))
             <!-- 面积 + 曲线 -->
             <path :d="curveArea" class="curve-area" :class="{ reveal: areaShown }" />
             <path ref="lineRef" :d="curvePath" class="curve-line" />
-            <!-- 数据点 -->
+            <!-- 数据点 + 透明命中区（放大 hover 感知范围） -->
             <g v-for="(p, i) in curvePoints" :key="p.date">
-              <circle :cx="sx(p.date)" :cy="sy(p.pct)" r="3.6" class="curve-dot" :class="{ first: i === 0 }" />
+              <circle :cx="sx(p.date)" :cy="sy(p.pct)" r="3.6" class="curve-dot" :class="{ first: i === 0, active: hoverIdx === i }" />
+              <circle :cx="sx(p.date)" :cy="sy(p.pct)" r="14" class="curve-hit" />
               <text :x="sx(p.date)" :y="SVG_H - PAD.b + 16" class="curve-x" text-anchor="middle">{{ p.label }}</text>
+            </g>
+            <!-- hover 提示：引导线 + 点旁纯数字（无日期、无 %） -->
+            <g v-if="hoverTip" class="curve-hover">
+              <line
+                :x1="hoverTip.x" :x2="hoverTip.x"
+                :y1="hoverTip.y" :y2="SVG_H - PAD.b"
+                class="curve-guide"
+              />
+              <circle :cx="hoverTip.x" :cy="hoverTip.y" r="5.2" class="curve-dot-active" />
+              <rect
+                :x="hoverTip.tipX"
+                :y="hoverTip.tipY"
+                :width="hoverTip.tipW"
+                :height="hoverTip.tipH"
+                rx="13"
+                class="curve-tip-bg"
+              />
+              <text
+                :x="hoverTip.textX"
+                :y="hoverTip.textY"
+                class="curve-tip-text"
+                text-anchor="middle"
+                dominant-baseline="central"
+              >{{ hoverTip.label }}</text>
             </g>
           </svg>
         </div>
@@ -421,10 +542,11 @@ onMounted(() => setTimeout(playCurveAnim, 250))
 }
 
 /* ── 主体两列：开发日志(左) + 下一步事项(右) ── */
+/* flex-start：右侧卡片高度按内容自适应，不被左侧长列拉伸 */
 .pp-row {
   display: flex;
   gap: 16px;
-  align-items: stretch;
+  align-items: flex-start;
 }
 .pp-row > .card,
 .pp-row > .pp-left {
@@ -440,6 +562,9 @@ onMounted(() => setTimeout(playCurveAnim, 250))
 .pending-card {
   width: 320px;
   flex-shrink: 0;
+  /* 高度完全由卡片内事项数量决定 */
+  height: auto;
+  align-self: flex-start;
 }
 @media (max-width: 800px) {
   .pp-row { flex-direction: column; }
@@ -633,8 +758,48 @@ onMounted(() => setTimeout(playCurveAnim, 250))
   fill: #2b6cd8;
   stroke: #fff;
   stroke-width: 1.6;
+  transition: r .12s ease, fill .12s ease;
 }
 .curve-dot.first {
   fill: #94a3b8;
+}
+.curve-dot.active {
+  fill: #1e57b5;
+}
+/* 透明命中区：放大鼠标可感知范围，便于 hover 到点旁百分比 */
+.curve-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+.curve-guide {
+  stroke: rgba(43,108,216,.22);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  pointer-events: none;
+}
+.curve-dot-active {
+  fill: #2b6cd8;
+  stroke: #fff;
+  stroke-width: 2.2;
+  pointer-events: none;
+}
+/* 轻量数字胶囊：半透明毛玻璃感 + 柔和蓝字，贴合页面浅色气质 */
+.curve-tip-bg {
+  fill: rgba(255, 255, 255, 0.92);
+  stroke: rgba(43, 108, 216, 0.1);
+  stroke-width: 1;
+  filter: drop-shadow(0 2px 8px rgba(43, 108, 216, 0.12));
+  pointer-events: none;
+}
+.curve-tip-text {
+  fill: #2b6cd8;
+  font-size: 13px;
+  font-family: var(--serif);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.curve-hover {
+  pointer-events: none;
 }
 </style>
