@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
 import type { DashboardData, HeatmapItem, Okr, Project } from '../api/types'
@@ -18,7 +18,6 @@ const filterOkrId = ref<number | null>(null)
 // 项目状态筛选：默认「进行中」（0 < progress < 100）
 const filterStatus = ref<ProjectStatus>('active')
 const loading = ref(true)
-let timer = 0
 
 // 监控指标：累计完成 / 本月完成 / 日均完成（从 365 天热力图数据聚合）
 const stats = computed(() => {
@@ -121,9 +120,7 @@ onMounted(() => {
   load()
   loadOkrs()
   loadHeatmap()
-  timer = window.setInterval(load, 30_000)
 })
-onBeforeUnmount(() => clearInterval(timer))
 </script>
 
 <template>
