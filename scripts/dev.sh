@@ -11,9 +11,10 @@
 #   3. 启动服务
 #   4. 停止服务
 #   5. 查看服务状态
+#   6. 检查环境依赖（缺失项用 brew 安装；不启动项目）
 #
 # 也支持命令行参数直接调用（便于脚本/别名调用）：
-#   scripts/dev.sh start | restart | restart-build | stop | status | build
+#   scripts/dev.sh start | restart | restart-build | stop | status | build | check
 # =============================================================================
 set -euo pipefail
 
@@ -146,6 +147,203 @@ build_frontend() {
   log "前端构建完成：$ROOT/frontend/dist"
 }
 
+# ─────────────────────────── 环境依赖检查 ───────────────────────────
+# 首次启动前检查本地工具依赖（brew / uv / python / node / pnpm / curl），
+# 缺失项使用 brew 安装。只负责检查与安装，不初始化项目、不启动服务；
+# 项目内状态（.venv / node_modules / dist / 数据库 / .env）仅做报告，
+# 首次启动（start/restart）时由对应步骤自动初始化。
+
+# 是否存在可用的 Python >= 3.12（PATH 中 python3，或 brew 的 python@3.12）
+python_ok() {
+  if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' >/dev/null 2>&1; then
+    return 0
+  fi
+  local bp
+  for bp in "$(brew --prefix)/opt/python@3.12/bin/python3" "$(brew --prefix)/opt/python@3.12/bin/python3.12"; do
+    if [[ -x "$bp" ]] && "$bp" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# 输出当前可用 Python 的版本描述（优先 PATH 中满足 >=3.12 的 python3）
+python_version_label() {
+  local py
+  py="$(command -v python3 2>/dev/null || true)"
+  if [[ -n "$py" ]] && "$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' >/dev/null 2>&1; then
+    "$py" -c 'import sys; print(f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")' 2>/dev/null
+    return
+  fi
+  for py in "$(brew --prefix)/opt/python@3.12/bin/python3" "$(brew --prefix)/opt/python@3.12/bin/python3.12"; do
+    if [[ -x "$py" ]] && "$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' >/dev/null 2>&1; then
+      "$py" -c 'import sys; print(f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")' 2>/dev/null
+      return
+    fi
+  done
+  echo "未知"
+}
+
+# 是否存在 Node >= 18（Vite 5 构建要求）
+node_ok() {
+  if ! command -v node >/dev/null 2>&1; then
+    return 1
+  fi
+  local ver
+  ver="$(node -v 2>/dev/null | sed 's/^v//; s/\..*//')"
+  [[ -n "$ver" ]] && (( ver >= 18 ))
+}
+
+check_env() {
+  log "================================================"
+  log "see_self 环境依赖检查"
+  log "（仅检查本地工具依赖，缺失项用 brew 安装；不初始化项目、不启动服务）"
+  log "================================================"
+
+  local fail_count=0 uv_bin pnpm_bin
+
+  # 1) Homebrew：后续所有 brew 安装的前提
+  if command -v brew >/dev/null 2>&1; then
+    log "  [1/6] Homebrew    已安装（$(command -v brew)）"
+  else
+    err "  [1/6] Homebrew 未安装，无法自动安装其它依赖。"
+    err "        请先执行官方安装命令："
+    err "        /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+    err "        安装完成后重新运行本选项（scripts/dev.sh check）。"
+    exit 1
+  fi
+
+  # 2) uv：后端依赖管理，负责创建 .venv 与同步依赖
+  uv_bin="$(find_uv)"
+  if [[ -n "$uv_bin" ]]; then
+    log "  [2/6] uv          已安装（${uv_bin}）"
+  else
+    warn "  [2/6] uv 未找到，正在使用 brew 安装 ..."
+    if brew install uv; then
+      uv_bin="$(find_uv)"
+      if [[ -n "$uv_bin" ]]; then
+        log "  ✓ uv 安装成功（${uv_bin}）"
+      else
+        err "  ✗ uv 已安装但不在 PATH，请重开终端或执行 source ~/.zprofile 后重试"
+        fail_count=$((fail_count + 1))
+      fi
+    else
+      err "  ✗ brew install uv 失败，请检查网络后重试"
+      fail_count=$((fail_count + 1))
+    fi
+  fi
+
+  # 3) Python >= 3.12（pyproject.toml 的 requires-python）
+  if python_ok; then
+    log "  [3/6] Python      已安装（$(python_version_label)）"
+  else
+    warn "  [3/6] 未找到 Python 3.12+，正在使用 brew 安装 python@3.12 ..."
+    if brew install python@3.12; then
+      if python_ok; then
+        log "  ✓ Python 3.12+ 已就绪（$(python_version_label)）"
+      else
+        warn "  python@3.12 已安装但不在 PATH；uv 可自动使用它。如需直接用 python3，请执行："
+        warn "  export PATH=\"$(brew --prefix)/opt/python@3.12/bin:\$PATH\""
+      fi
+    else
+      err "  ✗ brew install python@3.12 失败，请检查网络后重试"
+      fail_count=$((fail_count + 1))
+    fi
+  fi
+
+  # 4) Node >= 18（Vite 5 构建要求）
+  if node_ok; then
+    log "  [4/6] Node        已安装（$(node -v 2>/dev/null)）"
+  else
+    warn "  [4/6] 未找到 Node 18+，正在使用 brew 安装 node ..."
+    if brew install node; then
+      if node_ok; then
+        log "  ✓ Node 安装成功（$(node -v 2>/dev/null)）"
+      else
+        err "  ✗ node 已安装但不在 PATH，请重开终端或执行 source ~/.zprofile 后重试"
+        fail_count=$((fail_count + 1))
+      fi
+    else
+      err "  ✗ brew install node 失败，请检查网络后重试"
+      fail_count=$((fail_count + 1))
+    fi
+  fi
+
+  # 5) pnpm：前端依赖管理与构建
+  pnpm_bin="$(find_pnpm)"
+  if [[ -n "$pnpm_bin" ]]; then
+    log "  [5/6] pnpm        已安装（${pnpm_bin}）"
+  else
+    warn "  [5/6] pnpm 未找到，正在使用 brew 安装 ..."
+    if brew install pnpm; then
+      pnpm_bin="$(find_pnpm)"
+      if [[ -n "$pnpm_bin" ]]; then
+        log "  ✓ pnpm 安装成功（${pnpm_bin}）"
+      else
+        err "  ✗ pnpm 已安装但不在 PATH，请重开终端或执行 source ~/.zprofile 后重试"
+        fail_count=$((fail_count + 1))
+      fi
+    else
+      err "  ✗ brew install pnpm 失败，请检查网络后重试"
+      fail_count=$((fail_count + 1))
+    fi
+  fi
+
+  # 6) curl：健康检查用（macOS 自带，缺失时才需要安装）
+  if command -v curl >/dev/null 2>&1; then
+    log "  [6/6] curl        已安装（$(command -v curl)）"
+  else
+    warn "  [6/6] curl 未找到，正在使用 brew 安装 ..."
+    if brew install curl; then
+      log "  ✓ curl 安装成功"
+    else
+      err "  ✗ brew install curl 失败，请检查网络后重试"
+      fail_count=$((fail_count + 1))
+    fi
+  fi
+
+  # 项目内状态：仅报告，不自动处理（首次启动对应步骤会自动初始化）
+  log "----------------------------------------"
+  log "项目状态（仅报告；首次启动 start/restart 会自动初始化）"
+  if [[ -x "$ROOT/.venv/bin/python" ]]; then
+    log "  .venv                 已就绪"
+  else
+    warn "  .venv                 未创建（启动时自动执行 uv sync）"
+  fi
+  if [[ -d "$ROOT/frontend/node_modules" ]]; then
+    log "  frontend/node_modules 已就绪"
+  else
+    warn "  frontend/node_modules 未安装（启动时自动执行 pnpm install）"
+  fi
+  if [[ -f "$ROOT/frontend/dist/index.html" ]]; then
+    log "  frontend/dist         已构建"
+  else
+    warn "  frontend/dist         未构建（启动时自动执行 pnpm build）"
+  fi
+  if [[ -f "$ROOT/data/seeself.db" ]]; then
+    log "  data/seeself.db       已初始化"
+  else
+    warn "  data/seeself.db       未初始化（启动时自动执行 alembic upgrade head）"
+  fi
+  if [[ -f "$ROOT/.env" ]]; then
+    if grep -qE '^(DATABASE_URL=mysql|DB_HOST=)' "$ROOT/.env" 2>/dev/null; then
+      warn "  .env                  存在且配置了 MySQL（请确保 MySQL 服务可用；本地可用 brew install mysql 或 Docker）"
+    else
+      log "  .env                  存在（默认 SQLite，零外部依赖）"
+    fi
+  else
+    warn "  .env                  不存在（默认 SQLite 可直接运行；如需自定义配置可执行 cp .env.example .env）"
+  fi
+
+  log "----------------------------------------"
+  if (( fail_count > 0 )); then
+    err "环境检查未通过：${fail_count} 项依赖安装失败，请修复后重新执行本选项。"
+    exit 1
+  fi
+  log "环境检查通过：所有本地工具依赖已就绪。"
+  log "提示：接下来执行 start / restart 即可启动服务（首次会自动初始化 .venv、数据库与前端）。"
+}
+
 # ─────────────────────────── 健康检查 ───────────────────────────
 
 # 轮询 /api/health，最多等待约 15 秒，成功返回 0
@@ -270,7 +468,7 @@ status_server() {
 
 usage() {
   cat <<'EOF'
-用法: scripts/dev.sh <start|restart|restart-build|stop|status|build>
+用法: scripts/dev.sh <start|restart|restart-build|stop|status|build|check>
 
   start          启动服务（已运行则提示；dist 缺失会自动构建）
   restart        重启服务，不重新构建前端
@@ -278,6 +476,7 @@ usage() {
   stop           停止服务
   status         查看服务状态
   build          仅构建前端
+  check          检查本地环境依赖（uv/python/node/pnpm 等），缺失项用 brew 安装；不启动项目
   无参数          打开交互式菜单
 EOF
 }
@@ -292,6 +491,7 @@ if [[ $# -gt 0 ]]; then
     build)         build_frontend ;;
     stop)          stop_server ;;
     status)        status_server ;;
+    check|check-env) check_env ;;
     -h|--help|help) usage ;;
     *)             usage; exit 1 ;;
   esac
@@ -307,6 +507,7 @@ MENU_ITEMS=(
   "start         | 启动服务"
   "stop          | 停止服务"
   "status        | 查看服务状态"
+  "check-env     | 检查环境依赖并安装缺失项"
 )
 MENU_COUNT=${#MENU_ITEMS[@]}
 
@@ -354,6 +555,7 @@ run_action() {
     2) start_server ;;
     3) stop_server ;;
     4) status_server ;;
+    5) check_env ;;
   esac
 }
 

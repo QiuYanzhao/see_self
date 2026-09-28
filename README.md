@@ -20,6 +20,7 @@ bash scripts/dev.sh restart-build # 重启并重新构建前端
 bash scripts/dev.sh stop          # 停止服务
 bash scripts/dev.sh status        # 查看服务状态
 bash scripts/dev.sh build         # 仅构建前端
+bash scripts/dev.sh check         # 检查本地环境依赖（uv/python/node/pnpm），缺失项用 brew 安装
 ```
 
 - 端口可用环境变量覆盖：`PORT=8080 bash scripts/dev.sh start`；
