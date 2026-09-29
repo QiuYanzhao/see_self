@@ -31,14 +31,8 @@ function generatePeriods(): OkrPeriod[] {
     start: new Date(2026, q4.start[0], q4.start[1]),
     end: new Date(2026, q4.end[0], q4.end[1]),
   })
-  // 2027 年起：年度 + Q1-Q4
+  // 2027 年起：仅按季度推进，不再插入"年度"汇总项
   for (let year = 2027; year <= 2035; year++) {
-    periods.push({
-      type: 'year', year,
-      label: `${year} 年度`, quarterKey: `${year} 年度`,
-      start: new Date(year, 0, 1),
-      end: new Date(year, 11, 31),
-    })
     for (let q = 1; q <= 4; q++) {
       const r = QUARTER_RANGES[q - 1]
       periods.push({
@@ -54,7 +48,11 @@ function generatePeriods(): OkrPeriod[] {
 
 const periods = generatePeriods()
 const today = new Date()
-const defaultIndex = Math.max(0, periods.findIndex((p) => p.end >= today))
+// 进入页面默认选中：优先今天真正落在区间内的季度；
+// 若当前还在时间轴起点之前（例如时间轴从 2026 Q4 起，而今天是 Q3），则落到第一个尚未结束的周期。
+const currentIdx = periods.findIndex((p) => p.start <= today && today <= p.end)
+const upcomingIdx = periods.findIndex((p) => p.end >= today)
+const defaultIndex = Math.max(0, currentIdx !== -1 ? currentIdx : upcomingIdx)
 
 // ========== 状态 ==========
 const okrs = ref<Okr[]>([])

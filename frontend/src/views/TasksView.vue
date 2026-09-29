@@ -145,6 +145,11 @@ onUnmounted(() => {
 
 <style scoped>
 .page-head {
+  /* anim-item 入场动画 forwards 残留 transform:translateY(0)，使 .page-head 成为独立层叠上下文，
+     内部下拉菜单的 z-index 无法穿透到根节点与下方项目网格比较；这里主动给出正 z-index，
+     让头部（含 OKR 筛选下拉）整体浮在项目卡片之上。低于 sticky 导航栏(20)。 */
+  position: relative;
+  z-index: 10;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -196,15 +201,32 @@ onUnmounted(() => {
   background: rgba(43, 108, 216, 0.08);
 }
 
-/* OKR 筛选下拉在本页也蓝化 */
-.tasks-new :deep(.okr-filter-trigger) {
-  background: #fff;
-  border: 1px solid rgba(43, 108, 216, 0.28);
-  border-radius: 10px;
+/* OKR 筛选下拉：与总览页(DashboardView .dash-new)保持同一套蓝色主题 */
+.tasks-new :deep(.okr-trigger) {
+  background-color: rgba(255, 255, 255, 0.45);
+  border-color: rgba(43, 101, 246, 0.25);
+  box-shadow: 0 1px 3px rgba(30, 64, 175, 0.08);
 }
-.tasks-new :deep(.okr-filter-trigger:hover) {
-  border-color: #2b6cd8;
+.tasks-new :deep(.okr-trigger:hover) {
+  border-color: rgba(43, 101, 246, 0.5);
+  background-color: #f5f8ff;
 }
+.tasks-new :deep(.okr-trigger.open) {
+  border-color: #2b65f6;
+  box-shadow: 0 0 0 3px rgba(43, 101, 246, 0.14);
+}
+.tasks-new :deep(.chevron) { color: #2b65f6; }
+.tasks-new :deep(.okr-menu) {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(43, 101, 246, 0.22);
+  box-shadow: 0 10px 28px rgba(30, 64, 175, 0.16);
+}
+.tasks-new :deep(.okr-opt:hover) {
+  background: rgba(43, 101, 246, 0.10);
+  color: #1d4ed8;
+}
+.tasks-new :deep(.okr-opt.active) { color: #1d4ed8; }
+.tasks-new :deep(.check) { color: #2b65f6; }
 
 .project-grid {
   display: grid;
