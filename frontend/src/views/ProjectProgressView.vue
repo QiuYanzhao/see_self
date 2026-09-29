@@ -46,6 +46,33 @@ const nextSteps = computed(() => {
     .slice(0, 5)
 })
 
+// 是否全部完成（用于把"下一步事项"卡切换成"项目总结"卡）
+const isDone = computed(() =>
+  progress.value != null &&
+  progress.value.total_leaves > 0 &&
+  progress.value.completed_leaves >= progress.value.total_leaves
+)
+
+// 项目总结：周期、历时、实际推进天数、日均事项
+const summary = computed(() => {
+  if (!isDone.value || !timeline.value.length) return null
+  const dates = timeline.value
+    .map((t) => (t.completed_at ? t.completed_at.slice(0, 10) : ''))
+    .filter(Boolean)
+    .sort()
+  if (!dates.length) return null
+  const start = dates[0]
+  const end = dates[dates.length - 1]
+  const startMs = new Date(start + 'T00:00:00').getTime()
+  const endMs = new Date(end + 'T00:00:00').getTime()
+  // 含首尾：例如 09-16 ~ 09-16 算 1 天
+  const totalDays = Math.round((endMs - startMs) / 86400000) + 1
+  const activeDays = new Set(dates).size
+  const total = progress.value?.total_leaves || 0
+  const perDay = totalDays > 0 ? total / totalDays : 0
+  return { start, end, totalDays, activeDays, perDay, total }
+})
+
 // 完成下一步事项：本地更新树 + 进度统计 + 开发日志/曲线（不刷新页面）
 async function completeStep(item: { id: number; title?: string }) {
   if (completing.value.has(item.id)) return
@@ -454,8 +481,32 @@ onMounted(() => setTimeout(playCurveAnim, 250))
         </div>
         </div>
 
-        <!-- 下一步事项 -->
-        <div class="card pending-card">
+        <!-- 右栏：100% 完成 → 项目总结；否则 → 下一步事项 -->
+        <div v-if="isDone && summary" class="card pending-card summary-card">
+          <div class="card-title">项目总结</div>
+          <div class="summary-period">
+            <span class="summary-period-icon" aria-hidden="true">🏁</span>
+            <div>
+              <div class="summary-range">{{ summary.start }} ~ {{ summary.end }}</div>
+              <div class="summary-range-lbl">推进周期</div>
+            </div>
+          </div>
+          <div class="summary-stats">
+            <div class="summary-item">
+              <div class="summary-num">{{ summary.totalDays }}<span class="summary-unit">天</span></div>
+              <div class="summary-lbl">历时天数</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-num">{{ summary.activeDays }}<span class="summary-unit">天</span></div>
+              <div class="summary-lbl">实际推进</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-num">{{ summary.perDay.toFixed(1) }}<span class="summary-unit">项/天</span></div>
+              <div class="summary-lbl">日均事项</div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="card pending-card">
           <div class="card-title">下一步事项</div>
           <div v-if="!nextSteps.length" class="empty">全部完成 🎉</div>
           <div v-for="item in nextSteps" :key="item.id" class="pending-item">
@@ -719,6 +770,66 @@ onMounted(() => setTimeout(playCurveAnim, 250))
 .pending-done:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* ── 项目总结卡（100% 完成时替换"下一步事项"） ── */
+.summary-card {
+  background: linear-gradient(160deg, rgba(5, 150, 105, 0.08), rgba(255, 255, 255, 0.9) 55%);
+  border-color: rgba(5, 150, 105, 0.22);
+}
+.summary-period {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(5, 150, 105, 0.18);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+.summary-period-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.summary-range {
+  font-size: 15px;
+  font-weight: 700;
+  color: #065f46;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.summary-range-lbl {
+  font-size: 11px;
+  color: #5b6b80;
+  margin-top: 2px;
+}
+.summary-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  text-align: center;
+}
+.summary-item {
+  padding: 8px 4px;
+}
+.summary-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: #059669;
+  font-family: var(--serif);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.summary-unit {
+  font-size: 12px;
+  font-weight: 500;
+  color: #5b6b80;
+  margin-left: 2px;
+}
+.summary-lbl {
+  font-size: 11.5px;
+  color: #5b6b80;
+  margin-top: 4px;
 }
 /* ── 项目进度曲线 ── */
 .curve-svg {
