@@ -297,7 +297,7 @@ async function submitEdit() {
   if (!editForm.value.title.trim()) return
   const updated = (await api.updateTodo(editForm.value.id, {
     title: editForm.value.title.trim(),
-    description: editForm.value.description.trim() || undefined,
+    description: editForm.value.description.trim() || null,
   })) as TodoNode
   showEditModal.value = false
   const node = findNode(tree.value, updated.id)
